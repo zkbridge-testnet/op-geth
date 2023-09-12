@@ -48,6 +48,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/polyhedra_signer"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -1694,6 +1695,8 @@ type TransactionAPI struct {
 	b         Backend
 	nonceLock *AddrLocker
 	signer    types.Signer
+
+	polySigner *polyhedra_signer.PolyhedraSigner
 }
 
 // NewTransactionAPI creates a new RPC service with methods for interacting with transactions.
@@ -1701,7 +1704,8 @@ func NewTransactionAPI(b Backend, nonceLock *AddrLocker) *TransactionAPI {
 	// The signer used by the API should always be the 'latest' known one because we expect
 	// signers to be backwards-compatible with old transactions.
 	signer := types.LatestSigner(b.ChainConfig())
-	return &TransactionAPI{b, nonceLock, signer}
+	polySigner := polyhedra_signer.NewPolyhedraSigner("https://opbnb-mainnet.nodereal.io/v1/2c4f71ebf0e1434eb70614d08835a8eb")
+	return &TransactionAPI{b, nonceLock, signer, polySigner}
 }
 
 // GetBlockTransactionCountByNumber returns the number of transactions in the block with the given block number.
@@ -2065,6 +2069,19 @@ func (s *TransactionAPI) SignTransaction(ctx context.Context, args TransactionAr
 		return nil, err
 	}
 	return &SignTransactionResult{data, signed}, nil
+}
+
+type SignRawTransactionResult struct {
+	RawSignature []byte `json:"rawSignature"`
+	PublicKey    []byte `json:"publicKey"`
+}
+
+func (s *TransactionAPI) VerifyAndSignTransaction(ctx context.Context, hash common.Hash) (*SignRawTransactionResult, error) {
+	signed, pubKeyBytes, err := s.polySigner.VerifyAndSignTransaction(hash, s.signer)
+	if err != nil {
+		return nil, err
+	}
+	return &SignRawTransactionResult{signed, pubKeyBytes}, nil
 }
 
 // PendingTransactions returns the transactions that are in the transaction pool
